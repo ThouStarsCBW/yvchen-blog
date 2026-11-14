@@ -35,9 +35,9 @@ st.divider()
 st.subheader("Matplotlib 静态图表")
 col_bar, col_line = st.columns(2)
 with col_bar:
-    st.pyplot(charts.category_bar(df), use_container_width=True)
+    st.pyplot(charts.category_bar(df), width="stretch")
 with col_line:
-    st.pyplot(charts.monthly_line(df), use_container_width=True)
+    st.pyplot(charts.monthly_line(df), width="stretch")
 
 st.divider()
 

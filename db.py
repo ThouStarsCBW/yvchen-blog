@@ -8,7 +8,8 @@ import os
 import sqlite3
 from contextlib import closing
 
-import pandas as pd
+# 注意：Pandas 只在 load_dataframe() 里延迟导入。
+# 首页、写文章、文章管理页不需要 Pandas，这样能明显缩短首次打开页面时的等待时间。
 
 # blog.db 放在本项目目录下，不受启动目录影响
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blog.db")
@@ -142,6 +143,8 @@ def delete_article(article_id):
 
 def load_dataframe():
     """用 Pandas 把 articles 表读成 DataFrame，供统计页面分析使用。"""
+    import pandas as pd
+
     with closing(get_conn()) as conn:
         return pd.read_sql_query(
             "SELECT id, title, category, created_at FROM articles", conn

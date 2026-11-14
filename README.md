@@ -14,7 +14,7 @@
 
 ## 运行方法
 
-环境要求：Python 3.9 及以上，首次运行需要联网加载一次 Pyecharts 使用的 ECharts 脚本。
+环境要求：Python 3.10 及以上（推荐 3.12，已实测），首次运行需要联网加载一次 Pyecharts 使用的 ECharts 脚本。
 
 ```bash
 # 1. 安装依赖（建议先创建虚拟环境）
@@ -22,6 +22,14 @@ pip install -r requirements.txt
 
 # 2. 启动应用
 streamlit run app.py
+```
+
+如果电脑上装了 uv，也可以这样运行（`.venv` 已存在时可跳过第一行）：
+
+```bash
+uv venv --python 3.12
+uv pip install -r requirements.txt --python .venv/Scripts/python.exe
+.venv/Scripts/streamlit run app.py
 ```
 
 启动后浏览器自动打开 `http://localhost:8501`。首次运行会自动创建 `blog.db`，并写入 7 条示例文章，可以直接查看统计效果。

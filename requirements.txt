@@ -1,5 +1,6 @@
-streamlit>=1.36
+streamlit>=1.67
 pandas>=2.0
 matplotlib>=3.7
 pyecharts>=2.0
-streamlit-echarts>=0.4.0
+# 0.7.0 与新版 Streamlit 的 components v2 不兼容，固定使用 0.4.0
+streamlit-echarts==0.4.0
