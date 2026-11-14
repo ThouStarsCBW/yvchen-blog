@@ -1,7 +1,7 @@
-"""图表生成模块。
+"""图表与统计计算模块。
 
-包含 2 张 Matplotlib 静态图（返回 Figure）和 2 张 Pyecharts 交互图
-（返回可直接交给 st_echarts 的配置字典）。
+包含 2 张 Matplotlib 静态图、2 张 Pyecharts 交互图，
+以及基于 numpy 的月度统计和「分类 × 月份」发文矩阵。
 统计逻辑全部基于传入的 Pandas DataFrame。
 """
 
@@ -12,7 +12,7 @@ import matplotlib
 # 无界面后端，在 Streamlit 环境下更稳定
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
+import numpy as np
 from pyecharts import options as opts
 from pyecharts.charts import Bar, Pie
 
@@ -45,6 +45,47 @@ def _month_counts(df):
     months = months.str.slice(0, 7)  # YYYY-MM-DD -> YYYY-MM
     counts = months.value_counts().sort_index()
     return counts.index.tolist(), [int(v) for v in counts.values]
+
+
+def monthly_stats(df):
+    """用 numpy 计算每月发文量的均值、标准差、最高/最低值和最近月环比。"""
+    months, values = _month_counts(df)
+    arr = np.array(values, dtype=float)
+
+    growth = None
+    if len(arr) >= 2 and arr[-2] > 0:
+        growth = float((arr[-1] - arr[-2]) / arr[-2] * 100)
+
+    return {
+        "months": months,
+        "values": values,
+        "mean": float(np.mean(arr)),
+        "std": float(np.std(arr)),
+        "max": int(np.max(arr)),
+        "min": int(np.min(arr)),
+        "growth": growth,
+    }
+
+
+def category_month_matrix(df):
+    """构造「分类 × 月份」发文数量矩阵。
+
+    返回 (分类列表, 月份列表, numpy 二维数组)，数组每一行是一个分类，
+    每一列是一个月份。页面会把矩阵转成表格展示。
+    """
+    months = df["created_at"].astype(str).str.slice(0, 7)
+    categories = sorted(df["category"].unique().tolist())
+    month_labels = sorted(months.unique().tolist())
+
+    # 用 numpy 创建全 0 矩阵，再按分类和月份累加
+    matrix = np.zeros((len(categories), len(month_labels)), dtype=int)
+    category_index = {name: i for i, name in enumerate(categories)}
+    month_index = {name: j for j, name in enumerate(month_labels)}
+
+    for category, month in zip(df["category"], months):
+        matrix[category_index[category], month_index[month]] += 1
+
+    return categories, month_labels, matrix
 
 
 def category_bar(df):

@@ -3,4 +3,6 @@ __pycache__/
 .venv/
 venv/
 blog.db
+blog.log
+exports/
 .DS_Store

@@ -3,6 +3,7 @@
 import streamlit as st
 
 import db
+import file_ops
 
 st.set_page_config(page_title="文章管理", layout="wide")
 
@@ -103,3 +104,13 @@ else:
                 if col_no.button("取消删除", key=f"cancel_{article_id}"):
                     st.session_state.delete_id = None
                     st.rerun()
+
+st.divider()
+
+# ---------- 操作日志（第 5 章：读取文件） ----------
+with st.expander("最近的操作日志（blog.log）"):
+    logs = file_ops.read_recent_logs(10)
+    if logs:
+        st.code("\n".join(logs), language="text")
+    else:
+        st.info("还没有操作日志，新增或修改文章后会自动记录。")

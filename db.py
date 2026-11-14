@@ -2,11 +2,14 @@
 
 所有对 articles 表的读写都集中在这里，页面里只调用这些函数。
 数据库文件 blog.db 固定在项目根目录，首次运行会自动建表并写入示例数据。
+增删改操作会通过 file_ops 追加到 blog.log（文件操作示例）。
 """
 
 import os
 import sqlite3
 from contextlib import closing
+
+import file_ops
 
 # 注意：Pandas 只在 load_dataframe() 里延迟导入。
 # 首页、写文章、文章管理页不需要 Pandas，这样能明显缩短首次打开页面时的等待时间。
@@ -18,6 +21,7 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blog.db")
 CATEGORIES = ["生活", "技术", "随笔", "读书"]
 
 # 首次运行时写入的示例文章：(标题, 分类, 正文, 发布日期)
+# 每个分类各 3 篇，分布在 2026 年 6-11 月，方便直接查看统计和分类预测效果。
 SAMPLE_ARTICLES = [
     (
         "开始写博客的第一天",
@@ -70,6 +74,41 @@ SAMPLE_ARTICLES = [
         "静态图适合放进作业报告，交互图可以悬停查看数值、拖动缩放，两种方式各有各的好。",
         "2026-11-09",
     ),
+    (
+        "周末第一次自己做晚饭",
+        "生活",
+        "跟着视频做了番茄炒蛋和可乐鸡翅，味道居然还不错。\n\n"
+        "收拾厨房花的时间比做饭还长，下次争取动作快一点。",
+        "2026-10-18",
+    ),
+    (
+        "重读《小王子》",
+        "读书",
+        "小时候只觉得这是一个关于星球和玫瑰的童话，长大后再读，才明白书里写的其实是告别和牵挂。\n\n"
+        "真正重要的东西，用眼睛是看不见的。",
+        "2026-09-25",
+    ),
+    (
+        "《人类简史》读书笔记",
+        "读书",
+        "作者把人类的历史分成认知革命、农业革命和科学革命三个阶段。\n\n"
+        "最打动我的一句话是：人类靠讲故事把陌生人组织起来，这可能是文明最重要的能力。",
+        "2026-08-20",
+    ),
+    (
+        "关于时间管理的一点想法",
+        "随笔",
+        "以前总喜欢把时间表排得满满的，结果一项没完成就不想继续。\n\n"
+        "最近试着每天只定三件最重要的事，反而完成得更多，心里也没那么慌。",
+        "2026-09-30",
+    ),
+    (
+        "写在大一结束前",
+        "随笔",
+        "再过几天就放暑假了。这一年学会了写 Python，也认识了很多新同学。\n\n"
+        "希望大二能继续保持好奇心，多读书，多动手做项目。",
+        "2026-06-30",
+    ),
 ]
 
 
@@ -113,6 +152,8 @@ def add_article(title, category, content, created_at):
             (title, category, content, created_at),
         )
         conn.commit()
+    # 把这次操作写入文本日志（第 5 章：文件操作）
+    file_ops.append_log("新增文章", f"《{title}》 分类：{category}")
 
 
 def get_all_articles():
@@ -132,13 +173,21 @@ def update_article(article_id, title, category, content):
             (title, category, content, article_id),
         )
         conn.commit()
+    file_ops.append_log("修改文章", f"id={article_id} 标题改为《{title}》")
 
 
 def delete_article(article_id):
     """按 id 删除文章。"""
     with closing(get_conn()) as conn:
+        row = conn.execute(
+            "SELECT title FROM articles WHERE id = ?", (article_id,)
+        ).fetchone()
         conn.execute("DELETE FROM articles WHERE id = ?", (article_id,))
         conn.commit()
+    # 删除后日志里保留标题，方便以后查看
+    file_ops.append_log(
+        "删除文章", f"《{row['title']}》" if row else f"id={article_id}"
+    )
 
 
 def load_dataframe():
