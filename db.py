@@ -17,11 +17,12 @@ import file_ops
 # blog.db 放在本项目目录下，不受启动目录影响
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blog.db")
 
-# 文章分类下拉选项（写文章、编辑文章共用）
-CATEGORIES = ["生活", "技术", "随笔", "读书"]
+# 默认标签（写文章下拉、编辑页、示例数据共用）
+# 新数据使用 8 个标签；导入时如果出现其他标签，页面会自动补充显示。
+CATEGORIES = ["生活", "技术", "随笔", "读书", "职场", "美食", "旅行", "影音"]
 
 # 首次运行时写入的示例文章：(标题, 分类, 正文, 发布日期)
-# 每个分类各 3 篇，分布在 2026 年 6-11 月，方便直接查看统计和分类预测效果。
+# 每个分类各 3 篇，分布在 2026 年 6-11 月，方便直接查看统计效果。
 SAMPLE_ARTICLES = [
     (
         "开始写博客的第一天",
@@ -119,8 +120,20 @@ def get_conn():
     return conn
 
 
+def get_available_categories():
+    """返回默认标签和数据库中实际出现的标签，去重后排序。"""
+    with closing(get_conn()) as conn:
+        rows = conn.execute("SELECT DISTINCT category FROM articles").fetchall()
+    categories = set(CATEGORIES) | {row["category"] for row in rows}
+    return sorted(categories)
+
+
 def init_db():
-    """建表并保证表里有初始数据，可以重复调用（每个页面开头都会调用一次）。"""
+    """建表；只有首次运行（数据库文件不存在）时才写入示例数据。
+
+    这样清空文章后刷新页面不会自动补回示例数据，方便先清空再导入自己的数据。
+    """
+    is_first_run = not os.path.exists(DB_PATH)
     with closing(get_conn()) as conn:
         conn.execute(
             """
@@ -133,8 +146,7 @@ def init_db():
             )
             """
         )
-        total = conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
-        if total == 0:
+        if is_first_run:
             conn.executemany(
                 "INSERT INTO articles (title, category, content, created_at) "
                 "VALUES (?, ?, ?, ?)",
@@ -198,3 +210,46 @@ def load_dataframe():
         return pd.read_sql_query(
             "SELECT id, title, category, created_at FROM articles", conn
         )
+
+def get_existing_titles():
+    """返回数据库中已有的全部标题，用于导入时查重。"""
+    with closing(get_conn()) as conn:
+        rows = conn.execute("SELECT title FROM articles").fetchall()
+    return {row["title"] for row in rows}
+
+
+def bulk_add_articles(articles):
+    """批量插入文章，返回实际插入数量（articles 为字典列表）。"""
+    if not articles:
+        return 0
+
+    with closing(get_conn()) as conn:
+        conn.executemany(
+            "INSERT INTO articles (title, category, content, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            [
+                (a["title"], a["category"], a["content"], a["created_at"])
+                for a in articles
+            ],
+        )
+        conn.commit()
+
+    file_ops.append_log("批量导入", f"导入 {len(articles)} 篇文章")
+    return len(articles)
+
+def bulk_delete_articles(article_ids):
+    """批量删除文章，返回删除数量。"""
+    article_ids = list(article_ids)
+    if not article_ids:
+        return 0
+
+    # 只拼接问号占位符，具体 id 仍然通过参数传入，避免 SQL 注入
+    placeholders = ",".join("?" for _ in article_ids)
+    with closing(get_conn()) as conn:
+        conn.execute(
+            f"DELETE FROM articles WHERE id IN ({placeholders})", article_ids
+        )
+        conn.commit()
+
+    file_ops.append_log("批量删除", f"删除 {len(article_ids)} 篇文章")
+    return len(article_ids)

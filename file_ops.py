@@ -1,8 +1,9 @@
 """文件操作模块（对应课程第 5 章：文件操作）。
 
-集中处理两类文件读写：
-1. 操作日志 blog.log：用追加模式 "a" 写入，记录新增 / 修改 / 删除 / 抓取 / 导出。
-2. 统计结果导出 exports/：文章 CSV 与统计 JSON，用 open() + csv / json 模块写文件。
+集中处理三类文件读写：
+1. 操作日志 blog.log：追加写入、读取最近日志。
+2. 统计结果导出 exports/：文章 CSV、统计 JSON。
+3. 数据导入：CSV / JSON / JSONL 解析成统一的文章记录。
 """
 
 import csv
@@ -14,6 +15,14 @@ from datetime import datetime
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.path.join(BASE_DIR, "blog.log")
 EXPORT_DIR = os.path.join(BASE_DIR, "exports")
+
+# 导入文件兼容的字段名：英文优先，其次中文
+FIELD_ALIASES = {
+    "title": ("title", "标题"),
+    "content": ("content", "正文", "内容"),
+    "category": ("category", "分类"),
+    "created_at": ("created_at", "发布日期", "日期", "date"),
+}
 
 
 def append_log(action, detail=""):
@@ -68,3 +77,75 @@ def export_stats_json(stats, filename="stats.json"):
         json.dump(stats, file, ensure_ascii=False, indent=2)
     append_log("导出", f"统计数据导出为 {filename}")
     return path
+
+
+def parse_import_file(raw, filename):
+    """把上传文件的字节内容解析成记录列表，支持 CSV / JSON / JSONL。"""
+    name = filename.lower()
+
+    # CSV：用 DictReader 把每行转成字典
+    if name.endswith(".csv"):
+        text = raw.decode("utf-8-sig")
+        return list(csv.DictReader(io.StringIO(text)))
+
+    # JSONL：每行一个 JSON 对象
+    if name.endswith(".jsonl") or name.endswith(".ndjson"):
+        text = raw.decode("utf-8")
+        return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+    # JSON：支持数组，或 {"articles": [...]} / {"data": [...]}
+    if name.endswith(".json"):
+        data = json.loads(raw.decode("utf-8"))
+        if isinstance(data, dict):
+            data = data.get("articles", data.get("data", []))
+        if not isinstance(data, list):
+            raise ValueError("JSON 文件需要是数组，或包含 articles 数组")
+        return data
+
+    raise ValueError("只支持 .csv、.json、.jsonl 文件")
+
+
+def _pick(record, field):
+    """按中英文字段名从记录里取值，取不到返回空字符串。"""
+    for key in FIELD_ALIASES[field]:
+        if key in record and str(record[key]).strip():
+            return str(record[key]).strip()
+    return ""
+
+
+def normalize_article_records(records, today=None):
+    """把不同字段名的记录统一成文章格式，返回 (有效记录列表, 跳过条数)。"""
+    today = today or datetime.now().strftime("%Y-%m-%d")
+    articles = []
+    skipped = 0
+
+    for record in records:
+        if not isinstance(record, dict):
+            skipped += 1
+            continue
+
+        title = _pick(record, "title")
+        content = _pick(record, "content")
+        if not title or not content:
+            skipped += 1
+            continue
+
+        category = _pick(record, "category") or "随笔"
+
+        # 日期必须是 YYYY-MM-DD，否则用今天
+        created_at = _pick(record, "created_at")
+        try:
+            datetime.strptime(created_at, "%Y-%m-%d")
+        except ValueError:
+            created_at = today
+
+        articles.append(
+            {
+                "title": title,
+                "category": category,
+                "content": content,
+                "created_at": created_at,
+            }
+        )
+
+    return articles, skipped
