@@ -52,9 +52,11 @@ col_mean.metric("月均发文量", f"{stats['mean']:.2f} 篇")
 col_std.metric("标准差", f"{stats['std']:.2f}")
 col_max.metric("单月最高", f"{stats['max']} 篇")
 if stats["growth"] is None:
-    col_growth.metric("最近月环比", "—")
+    col_growth.metric("较上月", "—")
 else:
-    col_growth.metric("最近月环比", f"{stats['growth']:+.1f}%")
+    col_growth.metric("较上月", f"{stats['growth']:+.1f}%")
+
+st.caption("较上月 =（本月发文量 - 上月发文量）÷ 上月发文量；只有一个月数据时显示 —。")
 
 # 分类 × 月份发文矩阵：numpy 二维数组转成表格展示
 categories, months, matrix = charts.category_month_matrix(df)
@@ -104,7 +106,7 @@ stats_payload = {
     "月均发文量": round(stats["mean"], 2),
     "标准差": round(stats["std"], 2),
     "单月最高": stats["max"],
-    "最近月环比": None if stats["growth"] is None else round(stats["growth"], 2),
+    "较上月变化": None if stats["growth"] is None else round(stats["growth"], 2),
 }
 
 col_csv, col_json = st.columns(2)

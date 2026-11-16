@@ -48,7 +48,7 @@ def _month_counts(df):
 
 
 def monthly_stats(df):
-    """用 numpy 计算每月发文量的均值、标准差、最高/最低值和最近月环比。"""
+    """用 numpy 计算每月发文量的均值、标准差、最高/最低值和较上月变化。"""
     months, values = _month_counts(df)
     arr = np.array(values, dtype=float)
 
