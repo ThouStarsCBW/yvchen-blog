@@ -1,9 +1,10 @@
-"""文章管理页面：按分类（标签）/日期筛选，支持批量删除、逐篇编辑与删除。"""
+"""文章管理页面：按分类（标签）/日期筛选、分页查看、批量删除、逐篇编辑与删除。"""
 
 import streamlit as st
 
 import db
 import file_ops
+import pagination
 
 st.set_page_config(page_title="文章管理", layout="wide")
 
@@ -14,7 +15,7 @@ if flash:
     st.success(flash)
 
 st.title("文章管理")
-st.caption("先按分类（标签）和日期筛选，勾选后可批量删除；也可以逐篇编辑或删除")
+st.caption("按分类（标签）和日期筛选后，可分页查看、勾选批量删除，也可以逐篇编辑或删除")
 
 # 各种交互状态都放在 session_state 里
 if "edit_id" not in st.session_state:
@@ -56,31 +57,51 @@ if not filtered:
     st.info("当前筛选条件下没有文章，换个条件试试。")
     st.stop()
 
-# ---------- 全选 / 取消全选 ----------
+# 筛选条件变化时回到第一页
+signature = (tuple(selected_categories), start_date, end_date)
+if st.session_state.get("manage_filter_signature") != signature:
+    st.session_state["manage_page"] = 1
+    st.session_state["manage_filter_signature"] = signature
+
+
+def reset_manage_page():
+    """切换每页条数后回到第一页。"""
+    st.session_state["manage_page"] = 1
+
+
+page_size = st.selectbox(
+    "每页显示",
+    pagination.PAGE_SIZES,
+    index=0,
+    key="manage_page_size",
+    on_change=reset_manage_page,
+)
+
+page, _ = pagination.render_pager("manage", len(filtered), page_size)
+page_articles = pagination.paginate(filtered, page, page_size)
+
+# ---------- 全选本页 / 取消本页 ----------
+page_ids = [article["id"] for article in page_articles]
 col_all, col_none, _ = st.columns([1, 1, 3])
-if col_all.button("全选当前结果"):
-    for article in filtered:
-        st.session_state[f"select_{article['id']}"] = True
+if col_all.button("全选本页"):
+    for article_id in page_ids:
+        st.session_state[f"select_{article_id}"] = True
     st.rerun()
-if col_none.button("取消全选"):
-    for article in filtered:
-        st.session_state[f"select_{article['id']}"] = False
+if col_none.button("取消本页选择"):
+    for article_id in page_ids:
+        st.session_state[f"select_{article_id}"] = False
     st.rerun()
 
 # ---------- 文章列表 ----------
-selected_ids = []
-
-for article in filtered:
+for article in page_articles:
     article_id = article["id"]
     is_editing = st.session_state.edit_id == article_id
     is_deleting = st.session_state.delete_id == article_id
 
     col_check, col_body = st.columns([0.1, 0.9])
-    checked = col_check.checkbox(
+    col_check.checkbox(
         "选择", key=f"select_{article_id}", label_visibility="collapsed"
     )
-    if checked:
-        selected_ids.append(article_id)
 
     with col_body:
         # 编辑或删除时自动展开这一条，方便直接操作
@@ -157,12 +178,23 @@ for article in filtered:
                     st.session_state.delete_id = None
                     st.rerun()
 
+# 统计所有筛选结果中已勾选的文章，支持跨页选择
+selected_ids = [
+    article["id"]
+    for article in filtered
+    if st.session_state.get(f"select_{article['id']}", False)
+]
+
 st.divider()
 
 # ---------- 批量删除 ----------
 if selected_ids:
-    st.info(f"已选中 {len(selected_ids)} 篇文章")
-    if st.button(f"批量删除选中的 {len(selected_ids)} 篇", type="primary"):
+    st.info(f"已选中 {len(selected_ids)} 篇文章（可跨页）")
+    if st.button(
+        f"批量删除选中的 {len(selected_ids)} 篇",
+        type="primary",
+        key="bulk_delete_button",
+    ):
         st.session_state.bulk_delete_ids = selected_ids
         st.rerun()
 else:
@@ -172,14 +204,14 @@ if st.session_state.bulk_delete_ids:
     ids = st.session_state.bulk_delete_ids
     st.warning(f"确定删除选中的 {len(ids)} 篇文章吗？删除后无法恢复。")
     col_yes, col_no = st.columns(2)
-    if col_yes.button("确认批量删除", type="primary"):
+    if col_yes.button("确认批量删除", type="primary", key="bulk_confirm"):
         count = db.bulk_delete_articles(ids)
         for article_id in ids:
             st.session_state.pop(f"select_{article_id}", None)
         st.session_state.bulk_delete_ids = None
         st.session_state["flash"] = f"已删除 {count} 篇文章。"
         st.rerun()
-    if col_no.button("取消批量删除"):
+    if col_no.button("取消批量删除", key="bulk_cancel"):
         st.session_state.bulk_delete_ids = None
         st.rerun()
 
