@@ -80,9 +80,13 @@ st.divider()
 st.subheader("Pyecharts 交互图表")
 col_pie, col_month = st.columns(2)
 with col_pie:
-    st_echarts(options=charts.category_pie_options(df), height="380px")
+    st_echarts(
+        options=charts.category_pie_options(df), height="380px", key="category_pie"
+    )
 with col_month:
-    st_echarts(options=charts.monthly_bar_options(df), height="380px")
+    st_echarts(
+        options=charts.monthly_bar_options(df), height="380px", key="monthly_bar"
+    )
 
 st.caption("提示：鼠标悬停在图形上可查看具体数值，柱状图下方滑块可拖动缩放。")
 

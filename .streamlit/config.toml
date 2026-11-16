@@ -1,0 +1,8 @@
+[server]
+headless = true
+# 关闭文件监视：开发模式下少做磁盘扫描，页面响应更快。
+# 注意：修改 Python 代码后需要重启服务才会生效。
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
