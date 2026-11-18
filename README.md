@@ -36,7 +36,7 @@ uv pip install -r requirements.txt --python .venv/Scripts/python.exe
 .venv/Scripts/streamlit run app.py
 ```
 
-启动后浏览器自动打开 `http://localhost:8501`。首次运行（数据库文件不存在时）会自动创建 `blog.db` 并写入 12 条示例文章，方便直接查看统计效果。
+启动后浏览器自动打开 `http://localhost:8501`。首次运行（数据库文件不存在时）会自动创建 `blog.db`，并自动导入 `blog-data/articles.jsonl`（不会导入 `articles_2.jsonl`）；如果该数据文件不存在，才写入 12 条内置示例文章。
 
 ## 项目结构
 
@@ -44,6 +44,10 @@ uv pip install -r requirements.txt --python .venv/Scripts/python.exe
 yvchen-blog/
 ├── app.py                # 首页（文章列表 + 分页）
 ├── pagination.py         # 首页与管理页共用的分页工具
+├── blog-data/
+│   ├── articles.jsonl    # 首次运行自动导入的数据文件
+│   ├── articles_2.jsonl  # 不会自动导入
+│   └── merge.py
 ├── db.py                 # 数据库封装：建表、增删改查、批量导入导出、动态标签
 ├── charts.py             # numpy 统计计算、Matplotlib 静态图、Pyecharts 交互图
 ├── file_ops.py           # 文件操作：操作日志、CSV / JSON 导出与导入解析
@@ -118,6 +122,6 @@ yvchen-blog/
 - 数据库操作全部封装在 `db.py`，页面中不直接写 SQL。
 - 中文支持：`charts.py` 会按 微软雅黑 → 黑体 → 苹方 → 文泉驿 的顺序自动匹配系统中文字体，Windows / macOS 均能正常显示中文图表标题。
 - 页面全部使用 Streamlit 原生组件，没有自定义 HTML/CSS。
-- 示例数据只在数据库文件不存在（首次运行）时写入；清空文章后刷新页面不会自动补回，方便先清空再导入自己的数据。
+- 首次运行会自动导入 `blog-data/articles.jsonl`；该文件不存在时才写入内置示例数据。`articles_2.jsonl` 不会自动导入。清空文章后刷新页面不会自动补回。
 - `.streamlit/config.toml` 关闭了文件监视，修改 Python 代码后需要重启服务才会生效。
 - `blog.db`、`blog.log`、`exports/` 都是运行时生成的文件，不纳入 git。

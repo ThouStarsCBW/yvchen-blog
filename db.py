@@ -17,6 +17,11 @@ import file_ops
 # blog.db 放在本项目目录下，不受启动目录影响
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blog.db")
 
+# 首次运行自动导入的数据文件（只导入 articles.jsonl，不导入 articles_2.jsonl）
+AUTO_IMPORT_PATH = os.path.join(
+    os.path.dirname(DB_PATH), "blog-data", "articles.jsonl"
+)
+
 # 默认标签（写文章下拉、编辑页、示例数据共用）
 # 新数据使用 8 个标签；导入时如果出现其他标签，页面会自动补充显示。
 CATEGORIES = ["生活", "技术", "随笔", "读书", "职场", "美食", "旅行", "影音"]
@@ -128,12 +133,44 @@ def get_available_categories():
     return sorted(categories)
 
 
-def init_db():
-    """建表；只有首次运行（数据库文件不存在）时才写入示例数据。
+def _load_auto_import_articles():
+    """读取首次运行要自动导入的 JSONL 文件，返回去重后的文章列表。
 
-    这样清空文章后刷新页面不会自动补回示例数据，方便先清空再导入自己的数据。
+    只读取 AUTO_IMPORT_PATH（articles.jsonl），不会导入 articles_2.jsonl。
+    文件不存在或解析失败时返回空列表，由 init_db() 回退到示例数据。
+    """
+    if not os.path.exists(AUTO_IMPORT_PATH):
+        return []
+
+    try:
+        with open(AUTO_IMPORT_PATH, "rb") as file:
+            records = file_ops.parse_import_file(file.read(), AUTO_IMPORT_PATH)
+    except Exception:
+        return []
+
+    articles, _ = file_ops.normalize_article_records(records)
+
+    # 文件内部也可能有重复标题，这里再去重一次
+    unique_articles = []
+    seen_titles = set()
+    for article in articles:
+        if article["title"] in seen_titles:
+            continue
+        seen_titles.add(article["title"])
+        unique_articles.append(article)
+
+    return unique_articles
+
+
+def init_db():
+    """建表；首次运行时自动导入 blog-data/articles.jsonl。
+
+    如果没有可导入的数据文件，则写入内置示例数据。
+    清空文章后刷新页面不会自动补回，方便先清空再导入自己的数据。
     """
     is_first_run = not os.path.exists(DB_PATH)
+    auto_articles = _load_auto_import_articles() if is_first_run else []
+
     with closing(get_conn()) as conn:
         conn.execute(
             """
@@ -147,12 +184,25 @@ def init_db():
             """
         )
         if is_first_run:
-            conn.executemany(
-                "INSERT INTO articles (title, category, content, created_at) "
-                "VALUES (?, ?, ?, ?)",
-                SAMPLE_ARTICLES,
-            )
+            if auto_articles:
+                conn.executemany(
+                    "INSERT INTO articles (title, category, content, created_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    [
+                        (a["title"], a["category"], a["content"], a["created_at"])
+                        for a in auto_articles
+                    ],
+                )
+            else:
+                conn.executemany(
+                    "INSERT INTO articles (title, category, content, created_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    SAMPLE_ARTICLES,
+                )
         conn.commit()
+
+    if auto_articles:
+        file_ops.append_log("自动导入", f"首次运行导入 {len(auto_articles)} 篇文章")
 
 
 def add_article(title, category, content, created_at):
