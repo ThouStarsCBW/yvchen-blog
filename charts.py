@@ -115,7 +115,19 @@ def monthly_line(df):
     ax.set_xlabel("月份")
     ax.set_ylabel("文章数量")
     ax.set_ylim(0, max(values) + 1)
-    ax.tick_params(axis="x", rotation=45)
+
+    # 月份较多时每隔几个显示一个刻度，避免坐标标签挤在一起
+    step = max(1, len(months) // 10)
+    tick_positions = list(range(0, len(months), step))
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels(
+        [months[index] for index in tick_positions],
+        rotation=45,
+        ha="right",
+        fontsize=8,
+    )
+    ax.tick_params(axis="x", pad=6)
+
     ax.grid(linestyle="--", alpha=0.4)
     fig.tight_layout()
     return fig
@@ -155,7 +167,11 @@ def monthly_bar_options(df):
         .add_yaxis("文章数量", values, bar_width="45%")
         .set_global_opts(
             title_opts=opts.TitleOpts(title="每月发布文章数量（可缩放）", pos_left="center"),
-            xaxis_opts=opts.AxisOpts(name="月份"),
+            # 只有一个系列，隐藏图例，避免图例和标题重叠
+            legend_opts=opts.LegendOpts(is_show=False),
+            xaxis_opts=opts.AxisOpts(
+                name="月份", axislabel_opts=opts.LabelOpts(rotate=45)
+            ),
             yaxis_opts=opts.AxisOpts(name="篇数"),
             tooltip_opts=opts.TooltipOpts(
                 trigger="axis", axis_pointer_type="shadow"
