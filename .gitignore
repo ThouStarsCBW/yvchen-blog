@@ -6,7 +6,7 @@ blog.db
 blog.log
 exports/
 .DS_Store
-blog-data/
+
 项目文档/
 .workbuddy/
 .security/
