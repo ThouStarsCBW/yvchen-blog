@@ -16,6 +16,7 @@ import numpy as np
 from pyecharts import options as opts
 from pyecharts.charts import Bar, Pie
 
+
 # 按优先级列出常见中文字体：Windows / macOS / Linux
 CHINESE_FONTS = [
     "Microsoft YaHei",
@@ -180,3 +181,4 @@ def monthly_bar_options(df):
         )
     )
     return json.loads(bar.dump_options())
+

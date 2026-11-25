@@ -1,6 +1,6 @@
 # 个人博客文章管理与数据统计可视化系统
 
-大一 Python 课程大作业。一个基于 Streamlit 多页面的个人博客，覆盖文章增删改查、数据统计、文件导出与数据导入。
+大一 Python 课程大作业。一个基于 Streamlit 多页面的个人博客，覆盖文章增删改查、数据统计、数据导入和智能问答。
 
 ## 功能
 
@@ -13,8 +13,10 @@
   - 分类 × 月份发文矩阵（numpy 二维数组转换为表格）
   - Matplotlib 静态图：各分类文章数量柱状图、每月发布数量折线图
   - Pyecharts 交互图：各分类占比饼图、每月发布数量柱状图（可缩放）
+
   - 文件导出：下载文章 CSV / 统计 JSON，或写入项目 `exports/` 目录
 - **数据导入**：上传 CSV / JSON / JSONL 文件批量导入文章，支持中英文字段名，自动跳过重复标题和无效记录，标签数量不受限制
+- **智能问答**：先用 jieba + TF-IDF 检索相关文章，再用本地规则或 OpenAI 兼容大模型生成回答
 
 ## 运行方法
 
@@ -49,13 +51,16 @@ yvchen-blog/
 │   ├── articles_2.jsonl  # 不会自动导入
 │   └── merge.py
 ├── db.py                 # 数据库封装：建表、增删改查、批量导入导出、动态标签
-├── charts.py             # numpy 统计计算、Matplotlib 静态图、Pyecharts 交互图
+├── charts.py             # numpy 统计、Matplotlib、Pyecharts
 ├── file_ops.py           # 文件操作：操作日志、CSV / JSON 导出与导入解析
+├── text_utils.py         # 中文停用词
+├── rag.py                # RAG 检索与可选大模型回答
 ├── pages/
 │   ├── 1_写文章.py        # 写文章（支持动态标签与自定义标签）
 │   ├── 2_文章管理.py      # 筛选、分页、批量删除、编辑、日志
-│   ├── 3_数据统计.py      # 统计指标、numpy 统计、四张图表、文件导出
-│   └── 4_数据导入.py      # CSV / JSON / JSONL 批量导入
+│   ├── 3_数据统计.py      # 统计指标、numpy 统计、四张图表、导出
+│   ├── 4_数据导入.py      # CSV / JSON / JSONL 批量导入
+│   └── 5_智能问答.py      # 检索博客文章并生成回答
 ├── .streamlit/
 │   └── config.toml       # 关闭文件监视、关闭匿名统计，提升页面响应速度
 ├── requirements.txt
@@ -64,6 +69,30 @@ yvchen-blog/
 ├── blog.log              # 操作日志，自动生成
 └── exports/              # 导出的 CSV / JSON，自动生成
 ```
+
+## 智能问答说明
+
+配置大模型后，每次提问会把 **全部博客文章** 一次性作为上下文交给模型；未配置大模型时，本地检索最相关的 3 篇文章。
+
+- **默认模式：本地检索**，不需要联网或 API Key，直接返回最相关的 3 篇文章、相关度和正文摘要。
+- **可选模式：全量上下文**，设置以下环境变量后，会把全部文章（最多约 10 万字符，超出时优先保留较新文章）作为上下文调用 OpenAI 兼容接口。全量请求可能需要 30–60 秒：
+  ```bash
+  # DeepSeek 示例
+  set OPENAI_API_KEY=你的Key
+  set OPENAI_BASE_URL=https://api.deepseek.com/v1
+  set OPENAI_MODEL=deepseek-chat
+
+  # 火山引擎 Ark 示例
+  set OPENAI_API_KEY=你的ArkKey
+  set OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
+  set OPENAI_MODEL=ark-code-latest
+  ```
+  PowerShell 写法为 `$env:OPENAI_API_KEY="你的Key"`，其他两个变量同理。
+  代码不会发送 `temperature` 参数，以兼容只允许默认值的模型（如 Ark coding 模型）。
+- 页面会显示本次使用了多少篇文章、上下文字符数和输入 tokens。
+- 大模型调用超时或失败时，会自动回退到本地检索回答。
+- 调用大模型时，检索到的文章内容会发送给所配置的模型服务，请确认数据可以外发。
+
 
 ## 标签说明
 
@@ -109,18 +138,18 @@ yvchen-blog/
 | 1. 开发环境与编码规范 | `.venv` / `requirements.txt` 依赖管理、模块分层、PEP8 命名与函数注释 |
 | 2. 数据类型、运算符、内置函数 | 字符串、整数、布尔、日期、比较与逻辑运算、`len` / `max` / `int`、f-string |
 | 3. 列表、元组、字典、集合、字符串 | `CATEGORIES` 列表、`SAMPLE_ARTICLES` 元组、Pyecharts `options` 字典、集合去重、`zip` 与字符串切片 |
-| 4. 选择、循环、函数 | 各页面 `if / for`、`db.py` 与 `charts.py` 的函数定义、参数与返回值 |
+| 4. 选择、循环、函数 | 各页面 `if / for`、`db.py` / `charts.py` / `rag.py` 的函数定义、参数与返回值 |
 | 5. 文件操作 | `file_ops.py`：`open(..., "a")` 追加日志、CSV / JSON 文件导出、读取与解析导入文件 |
 | 6. numpy 数组与矩阵运算 | 月均 / 标准差 / 最大值、`np.zeros` 构造分类 × 月份二维矩阵、按行求和 |
 | 7. Pandas 数据分析 | `read_sql_query`、`value_counts`、`sort_index`、`DataFrame`、矩阵转表格 |
 | 9. matplotlib 可视化 | 分类柱状图、月度折线图、中文字体设置、`bar_label`、`tight_layout` |
 
-说明：第 8 章 sklearn 机器学习、第 10 章爬虫未包含在本项目中。
+说明：第 8 章 sklearn 机器学习、第 10 章爬虫未包含在本项目中；智能问答的检索使用 jieba + 手写 TF-IDF，不依赖 sklearn。
 
 ## 说明
 
 - 数据库操作全部封装在 `db.py`，页面中不直接写 SQL。
-- 中文支持：`charts.py` 会按 微软雅黑 → 黑体 → 苹方 → 文泉驿 的顺序自动匹配系统中文字体，Windows / macOS 均能正常显示中文图表标题。
+- 中文支持：图表会自动匹配系统中文字体（微软雅黑 / 黑体 / 苹方等）。
 - 页面全部使用 Streamlit 原生组件，没有自定义 HTML/CSS。
 - 首次运行会自动导入 `blog-data/articles.jsonl`；该文件不存在时才写入内置示例数据。`articles_2.jsonl` 不会自动导入。清空文章后刷新页面不会自动补回。
 - `.streamlit/config.toml` 关闭了文件监视，修改 Python 代码后需要重启服务才会生效。
