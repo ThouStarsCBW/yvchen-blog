@@ -181,3 +181,108 @@ def llm_answer_all(question, articles, max_chars=MAX_CONTEXT_CHARS, timeout=120)
         "chars": total_chars,
         "usage": usage,
     }
+
+def _stream_completion(messages, timeout=180):
+    """调用 OpenAI 兼容接口的流式接口，逐段 yield 文本内容。"""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
+    payload = {"model": model, "messages": messages, "stream": True}
+    request = urllib.request.Request(
+        f"{base_url}/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        for raw_line in response:
+            line = raw_line.decode("utf-8", errors="ignore").strip()
+            if not line or not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            choices = chunk.get("choices") or []
+            if not choices:
+                continue
+            # 只取最终回答内容，忽略部分模型返回的 reasoning_content
+            content = (choices[0].get("delta") or {}).get("content")
+            if content:
+                yield content
+
+
+def stream_chat_answer(
+    question, articles, history, max_chars=MAX_CONTEXT_CHARS, timeout=180
+):
+    """多轮对话 + 全量上下文：把全部文章作为 system 消息，流式生成回答。
+
+    history 是之前的对话消息列表（不含当前问题），只带最近 8 条，
+    避免对话历史把上下文撑爆。
+    """
+    context, _, _ = build_full_context(articles, max_chars)
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "你是博客助手。请只根据下面的博客文章回答用户问题；"
+                "如果资料里没有答案，就直接说没有找到，不要编造。\n\n"
+                f"博客文章：\n{context}"
+            ),
+        }
+    ]
+    for message in history[-8:]:
+        messages.append({"role": message["role"], "content": message["content"]})
+    messages.append({"role": "user", "content": question})
+
+    got_content = False
+    for chunk in _stream_completion(messages, timeout=timeout):
+        got_content = True
+        yield chunk
+    if not got_content:
+        raise RuntimeError("模型没有返回流式内容")
+
+def stream_chat_answer_with_context(question, context, history=None, timeout=180):
+    """用外部传入的上下文（来自 DB 查询函数）流式生成回答。
+
+    context 由 db_tools.collect_db_context() 根据问题调用数据库函数后生成。
+    """
+    history = history or []
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "你是博客助手。请只根据下面的数据库查询结果回答用户问题；"
+                "如果资料里没有答案，就直接说没有找到，不要编造。\n\n"
+                f"{context}"
+            ),
+        }
+    ]
+    for message in history[-8:]:
+        messages.append({"role": message["role"], "content": message["content"]})
+    messages.append({"role": "user", "content": question})
+
+    got_content = False
+    for chunk in _stream_completion(messages, timeout=timeout):
+        got_content = True
+        yield chunk
+    if not got_content:
+        raise RuntimeError("模型没有返回流式内容")
+
+
+def llm_answer_with_context(question, context, history=None, timeout=120):
+    """用外部上下文一次性生成回答（流式失败时回退）。"""
+    chunks = list(
+        stream_chat_answer_with_context(
+            question, context, history, timeout=timeout
+        )
+    )
+    return "".join(chunks), {}

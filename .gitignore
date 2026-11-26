@@ -4,6 +4,7 @@ __pycache__/
 venv/
 blog.db
 blog.log
+chat_history.json
 exports/
 .DS_Store
 

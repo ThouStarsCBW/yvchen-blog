@@ -1,7 +1,7 @@
 """数据库操作模块。
 
 所有对 articles 表的读写都集中在这里，页面里只调用这些函数。
-数据库文件 blog.db 固定在项目根目录，首次运行会自动建表并写入示例数据。
+数据库文件 blog.db 固定在项目根目录，首次运行只建表，不自动导入任何数据。
 增删改操作会通过 file_ops 追加到 blog.log（文件操作示例）。
 """
 
@@ -17,105 +17,9 @@ import file_ops
 # blog.db 放在本项目目录下，不受启动目录影响
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blog.db")
 
-# 首次运行自动导入的数据文件（只导入 articles.jsonl，不导入 articles_2.jsonl）
-AUTO_IMPORT_PATH = os.path.join(
-    os.path.dirname(DB_PATH), "blog-data", "articles.jsonl"
-)
-
-# 默认标签（写文章下拉、编辑页、示例数据共用）
-# 新数据使用 8 个标签；导入时如果出现其他标签，页面会自动补充显示。
+# 默认标签（写文章下拉、编辑页共用）
+# 导入时如果出现其他标签，页面会自动补充显示。
 CATEGORIES = ["生活", "技术", "随笔", "读书", "职场", "美食", "旅行", "影音"]
-
-# 首次运行时写入的示例文章：(标题, 分类, 正文, 发布日期)
-# 每个分类各 3 篇，分布在 2026 年 6-11 月，方便直接查看统计效果。
-SAMPLE_ARTICLES = [
-    (
-        "开始写博客的第一天",
-        "生活",
-        "今天正式开通了这个博客。\n\n"
-        "以后会在这里记录学习的笔记、生活里的小事，还有一些看完书之后的想法。"
-        "希望自己能坚持写下去。",
-        "2026-06-08",
-    ),
-    (
-        "用 Streamlit 十分钟做一个网页",
-        "技术",
-        "Streamlit 是 Python 里非常简单好用的 Web 框架，只要会写 Python 就能做出网页。\n\n"
-        "今天试了一下多页面功能，把文件放进 pages 目录就能自动生成左侧导航，比想象中省事。",
-        "2026-07-15",
-    ),
-    (
-        "Pandas 数据清洗的几个常用操作",
-        "技术",
-        "课程作业里用到了 Pandas，记录几个常用操作：\n\n"
-        "read_sql 从数据库读表，groupby 分组统计，value_counts 快速计数，"
-        "to_datetime 转换日期格式。",
-        "2026-08-03",
-    ),
-    (
-        "秋天的校园散步",
-        "生活",
-        "傍晚在校园里走了一圈，银杏叶开始变黄了。\n\n"
-        "绕着操场走了三圈，风很凉快，回来路上买了一杯热奶茶。",
-        "2026-09-12",
-    ),
-    (
-        "读《活着》有感",
-        "读书",
-        "用了三个晚上读完《活着》。福贵的一生苦难不断，但他仍然平静地活了下来。\n\n"
-        "合上书之后想了很久：活着本身就是一件需要勇气的事。",
-        "2026-10-05",
-    ),
-    (
-        "关于坚持写周记这件小事",
-        "随笔",
-        "坚持写周记半年了，翻回去看，发现很多当时觉得过不去的坎，现在都变成了普通的一行字。\n\n"
-        "大概记录本身就是一种整理。",
-        "2026-11-02",
-    ),
-    (
-        "给博客加一个数据统计页面",
-        "技术",
-        "用 Pandas 从 SQLite 读出文章数据，再用 Matplotlib 和 Pyecharts 画图。\n\n"
-        "静态图适合放进作业报告，交互图可以悬停查看数值、拖动缩放，两种方式各有各的好。",
-        "2026-11-09",
-    ),
-    (
-        "周末第一次自己做晚饭",
-        "生活",
-        "跟着视频做了番茄炒蛋和可乐鸡翅，味道居然还不错。\n\n"
-        "收拾厨房花的时间比做饭还长，下次争取动作快一点。",
-        "2026-10-18",
-    ),
-    (
-        "重读《小王子》",
-        "读书",
-        "小时候只觉得这是一个关于星球和玫瑰的童话，长大后再读，才明白书里写的其实是告别和牵挂。\n\n"
-        "真正重要的东西，用眼睛是看不见的。",
-        "2026-09-25",
-    ),
-    (
-        "《人类简史》读书笔记",
-        "读书",
-        "作者把人类的历史分成认知革命、农业革命和科学革命三个阶段。\n\n"
-        "最打动我的一句话是：人类靠讲故事把陌生人组织起来，这可能是文明最重要的能力。",
-        "2026-08-20",
-    ),
-    (
-        "关于时间管理的一点想法",
-        "随笔",
-        "以前总喜欢把时间表排得满满的，结果一项没完成就不想继续。\n\n"
-        "最近试着每天只定三件最重要的事，反而完成得更多，心里也没那么慌。",
-        "2026-09-30",
-    ),
-    (
-        "写在大一结束前",
-        "随笔",
-        "再过几天就放暑假了。这一年学会了写 Python，也认识了很多新同学。\n\n"
-        "希望大二能继续保持好奇心，多读书，多动手做项目。",
-        "2026-06-30",
-    ),
-]
 
 
 def get_conn():
@@ -133,44 +37,8 @@ def get_available_categories():
     return sorted(categories)
 
 
-def _load_auto_import_articles():
-    """读取首次运行要自动导入的 JSONL 文件，返回去重后的文章列表。
-
-    只读取 AUTO_IMPORT_PATH（articles.jsonl），不会导入 articles_2.jsonl。
-    文件不存在或解析失败时返回空列表，由 init_db() 回退到示例数据。
-    """
-    if not os.path.exists(AUTO_IMPORT_PATH):
-        return []
-
-    try:
-        with open(AUTO_IMPORT_PATH, "rb") as file:
-            records = file_ops.parse_import_file(file.read(), AUTO_IMPORT_PATH)
-    except Exception:
-        return []
-
-    articles, _ = file_ops.normalize_article_records(records)
-
-    # 文件内部也可能有重复标题，这里再去重一次
-    unique_articles = []
-    seen_titles = set()
-    for article in articles:
-        if article["title"] in seen_titles:
-            continue
-        seen_titles.add(article["title"])
-        unique_articles.append(article)
-
-    return unique_articles
-
-
 def init_db():
-    """建表；首次运行时自动导入 blog-data/articles.jsonl。
-
-    如果没有可导入的数据文件，则写入内置示例数据。
-    清空文章后刷新页面不会自动补回，方便先清空再导入自己的数据。
-    """
-    is_first_run = not os.path.exists(DB_PATH)
-    auto_articles = _load_auto_import_articles() if is_first_run else []
-
+    """建表；首次运行只创建空表，不自动导入任何数据。"""
     with closing(get_conn()) as conn:
         conn.execute(
             """
@@ -183,26 +51,7 @@ def init_db():
             )
             """
         )
-        if is_first_run:
-            if auto_articles:
-                conn.executemany(
-                    "INSERT INTO articles (title, category, content, created_at) "
-                    "VALUES (?, ?, ?, ?)",
-                    [
-                        (a["title"], a["category"], a["content"], a["created_at"])
-                        for a in auto_articles
-                    ],
-                )
-            else:
-                conn.executemany(
-                    "INSERT INTO articles (title, category, content, created_at) "
-                    "VALUES (?, ?, ?, ?)",
-                    SAMPLE_ARTICLES,
-                )
         conn.commit()
-
-    if auto_articles:
-        file_ops.append_log("自动导入", f"首次运行导入 {len(auto_articles)} 篇文章")
 
 
 def add_article(title, category, content, created_at):
@@ -261,6 +110,7 @@ def load_dataframe():
             "SELECT id, title, category, created_at FROM articles", conn
         )
 
+
 def get_existing_titles():
     """返回数据库中已有的全部标题，用于导入时查重。"""
     with closing(get_conn()) as conn:
@@ -286,6 +136,7 @@ def bulk_add_articles(articles):
 
     file_ops.append_log("批量导入", f"导入 {len(articles)} 篇文章")
     return len(articles)
+
 
 def bulk_delete_articles(article_ids):
     """批量删除文章，返回删除数量。"""

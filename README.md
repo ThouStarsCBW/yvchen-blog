@@ -16,7 +16,7 @@
 
   - 文件导出：下载文章 CSV / 统计 JSON，或写入项目 `exports/` 目录
 - **数据导入**：上传 CSV / JSON / JSONL 文件批量导入文章，支持中英文字段名，自动跳过重复标题和无效记录，标签数量不受限制
-- **智能问答**：先用 jieba + TF-IDF 检索相关文章，再用本地规则或 OpenAI 兼容大模型生成回答
+- **智能问答**：先按问题调用 DB 查询/统计函数，再用本地规则或 OpenAI 兼容大模型生成回答
 
 ## 运行方法
 
@@ -38,7 +38,7 @@ uv pip install -r requirements.txt --python .venv/Scripts/python.exe
 .venv/Scripts/streamlit run app.py
 ```
 
-启动后浏览器自动打开 `http://localhost:8501`。首次运行（数据库文件不存在时）会自动创建 `blog.db`，并自动导入 `blog-data/articles.jsonl`（不会导入 `articles_2.jsonl`）；如果该数据文件不存在，才写入 12 条内置示例文章。
+启动后浏览器自动打开 `http://localhost:8501`。首次运行（数据库文件不存在时）会自动创建 `blog.db` 并建表，但**不会自动导入任何数据**；需要数据时使用「数据导入」页导入 `blog-data/articles.jsonl`，或在「写文章」页手动发布。
 
 ## 项目结构
 
@@ -47,14 +47,15 @@ yvchen-blog/
 ├── app.py                # 首页（文章列表 + 分页）
 ├── pagination.py         # 首页与管理页共用的分页工具
 ├── blog-data/
-│   ├── articles.jsonl    # 首次运行自动导入的数据文件
+│   ├── articles.jsonl    # 可供导入的数据文件（不会自动导入）
 │   ├── articles_2.jsonl  # 不会自动导入
 │   └── merge.py
 ├── db.py                 # 数据库封装：建表、增删改查、批量导入导出、动态标签
 ├── charts.py             # numpy 统计、Matplotlib、Pyecharts
 ├── file_ops.py           # 文件操作：操作日志、CSV / JSON 导出与导入解析
 ├── text_utils.py         # 中文停用词
-├── rag.py                # RAG 检索与可选大模型回答
+├── db_tools.py           # 按问题意图调用 DB 查询/统计函数
+├── rag.py                # 检索与可选大模型回答
 ├── pages/
 │   ├── 1_写文章.py        # 写文章（支持动态标签与自定义标签）
 │   ├── 2_文章管理.py      # 筛选、分页、批量删除、编辑、日志
@@ -72,10 +73,15 @@ yvchen-blog/
 
 ## 智能问答说明
 
-配置大模型后，每次提问会把 **全部博客文章** 一次性作为上下文交给模型；未配置大模型时，本地检索最相关的 3 篇文章。
+每次提问会先根据问题内容调用 `db.py` 中的查询/统计函数，把返回结果作为上下文，再调用大模型生成回答；未配置大模型时使用本地检索。
 
-- **默认模式：本地检索**，不需要联网或 API Key，直接返回最相关的 3 篇文章、相关度和正文摘要。
-- **可选模式：全量上下文**，设置以下环境变量后，会把全部文章（最多约 10 万字符，超出时优先保留较新文章）作为上下文调用 OpenAI 兼容接口。全量请求可能需要 30–60 秒：
+- **DB 查询路由**（`db_tools.py`）：
+  - 统计类问题：调用 `db.load_dataframe()` 统计总文章数、各标签数量、每月发文量
+  - 指定标签问题：调用 `db.get_available_categories()` 并按分类过滤文章
+  - 内容类问题：调用 `rag.search()` 检索最相关的文章
+  - 查询结果和最多 6 篇相关文章会作为 AI 上下文
+- **默认模式：本地检索**，不需要联网或 API Key，直接返回检索到的文章摘要。
+- **可选模式：大模型 + 流式输出**，设置以下环境变量后，调用 OpenAI 兼容接口；模型只接收 DB 查询结果和相关文章，不再一次性发送全部文章：
   ```bash
   # DeepSeek 示例
   set OPENAI_API_KEY=你的Key
@@ -89,9 +95,10 @@ yvchen-blog/
   ```
   PowerShell 写法为 `$env:OPENAI_API_KEY="你的Key"`，其他两个变量同理。
   代码不会发送 `temperature` 参数，以兼容只允许默认值的模型（如 Ark coding 模型）。
-- 页面会显示本次使用了多少篇文章、上下文字符数和输入 tokens。
-- 大模型调用超时或失败时，会自动回退到本地检索回答。
-- 调用大模型时，检索到的文章内容会发送给所配置的模型服务，请确认数据可以外发。
+- 页面为多轮对话框形式，回答逐段流式输出；只把最近 8 条对话历史传给模型，右上角「清空对话」可以重置会话。
+- 聊天记录保存在本地 `chat_history.json`，切换页面、刷新或重启服务后会自动恢复；点击「清空对话」会删除该文件。该文件不纳入 git。
+- 大模型调用超时或失败时，会先尝试一次性回答，再回退到本地检索。
+- 调用大模型时，DB 查询结果和相关文章会发送给所配置的模型服务，请确认数据可以外发。
 
 
 ## 标签说明
@@ -137,11 +144,11 @@ yvchen-blog/
 | --- | --- |
 | 1. 开发环境与编码规范 | `.venv` / `requirements.txt` 依赖管理、模块分层、PEP8 命名与函数注释 |
 | 2. 数据类型、运算符、内置函数 | 字符串、整数、布尔、日期、比较与逻辑运算、`len` / `max` / `int`、f-string |
-| 3. 列表、元组、字典、集合、字符串 | `CATEGORIES` 列表、`SAMPLE_ARTICLES` 元组、Pyecharts `options` 字典、集合去重、`zip` 与字符串切片 |
-| 4. 选择、循环、函数 | 各页面 `if / for`、`db.py` / `charts.py` / `rag.py` 的函数定义、参数与返回值 |
+| 3. 列表、元组、字典、集合、字符串 | `CATEGORIES` 列表、Pyecharts `options` 字典、`zip` 元组、集合去重、字符串切片 |
+| 4. 选择、循环、函数 | 各页面 `if / for`、`db.py` / `db_tools.py` / `charts.py` / `rag.py` 的函数定义、参数与返回值 |
 | 5. 文件操作 | `file_ops.py`：`open(..., "a")` 追加日志、CSV / JSON 文件导出、读取与解析导入文件 |
 | 6. numpy 数组与矩阵运算 | 月均 / 标准差 / 最大值、`np.zeros` 构造分类 × 月份二维矩阵、按行求和 |
-| 7. Pandas 数据分析 | `read_sql_query`、`value_counts`、`sort_index`、`DataFrame`、矩阵转表格 |
+| 7. Pandas 数据分析 | `read_sql_query`、`value_counts`、`sort_index`、`DataFrame`、矩阵转表格、`db_tools` 按问题调用统计函数 |
 | 9. matplotlib 可视化 | 分类柱状图、月度折线图、中文字体设置、`bar_label`、`tight_layout` |
 
 说明：第 8 章 sklearn 机器学习、第 10 章爬虫未包含在本项目中；智能问答的检索使用 jieba + 手写 TF-IDF，不依赖 sklearn。
@@ -151,6 +158,6 @@ yvchen-blog/
 - 数据库操作全部封装在 `db.py`，页面中不直接写 SQL。
 - 中文支持：图表会自动匹配系统中文字体（微软雅黑 / 黑体 / 苹方等）。
 - 页面全部使用 Streamlit 原生组件，没有自定义 HTML/CSS。
-- 首次运行会自动导入 `blog-data/articles.jsonl`；该文件不存在时才写入内置示例数据。`articles_2.jsonl` 不会自动导入。清空文章后刷新页面不会自动补回。
+- 首次运行只创建 `blog.db` 空表，不自动导入任何数据；需要数据时通过「数据导入」页导入文件，或在「写文章」页手动发布。
 - `.streamlit/config.toml` 关闭了文件监视，修改 Python 代码后需要重启服务才会生效。
 - `blog.db`、`blog.log`、`exports/` 都是运行时生成的文件，不纳入 git。

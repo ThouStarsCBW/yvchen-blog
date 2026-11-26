@@ -15,6 +15,7 @@ from datetime import datetime
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.path.join(BASE_DIR, "blog.log")
 EXPORT_DIR = os.path.join(BASE_DIR, "exports")
+CHAT_HISTORY_PATH = os.path.join(BASE_DIR, "chat_history.json")
 
 # 导入文件兼容的字段名：英文优先，其次中文
 FIELD_ALIASES = {
@@ -149,3 +150,39 @@ def normalize_article_records(records, today=None):
         )
 
     return articles, skipped
+
+def load_chat_history(limit=100):
+    """读取本地聊天记录，返回最近 limit 条消息；文件不存在或损坏时返回空列表。"""
+    if not os.path.exists(CHAT_HISTORY_PATH):
+        return []
+
+    try:
+        with open(CHAT_HISTORY_PATH, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except Exception:
+        return []
+
+    if not isinstance(data, list):
+        return []
+
+    messages = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        content = str(item.get("content", "")).strip()
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    return messages[-limit:]
+
+
+def save_chat_history(messages, limit=100):
+    """把聊天记录写入本地 JSON 文件，最多保留最近 limit 条。"""
+    with open(CHAT_HISTORY_PATH, "w", encoding="utf-8") as file:
+        json.dump(messages[-limit:], file, ensure_ascii=False, indent=2)
+
+
+def clear_chat_history():
+    """删除本地聊天记录文件。"""
+    if os.path.exists(CHAT_HISTORY_PATH):
+        os.remove(CHAT_HISTORY_PATH)
