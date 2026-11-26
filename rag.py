@@ -11,6 +11,15 @@ import math
 import os
 import urllib.request
 from collections import Counter
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+
+    # 优先读取项目根目录的 .env；命令行已有的环境变量不会被覆盖
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+except ImportError:
+    pass
 
 import jieba
 

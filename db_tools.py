@@ -2,7 +2,8 @@
 
 根据用户问题选择 db.py 中的查询/统计函数，把返回结果整理成给大模型的上下文：
 - 统计类问题：调用 db.load_dataframe() 做分类 / 月度统计
-- 指定标签问题：调用 db.get_available_categories() 和文章列表过滤
+- 标签 / 分类问题：调用 db.get_available_categories()，把全部标签和数量交给模型
+- 指定标签问题：按分类过滤文章
 - 内容类问题：调用 rag.search() 检索相关文章
 """
 
@@ -12,6 +13,10 @@ import rag
 # 统计类问题的关键词
 STAT_KEYWORDS = (
     "多少", "数量", "统计", "几篇", "分布", "占比", "平均", "最高", "最低", "总数",
+)
+# 标签 / 分类类问题的关键词
+TAG_KEYWORDS = (
+    "标签", "分类", "几个标签", "多少标签", "哪些标签", "标签数", "分类数",
 )
 # 日期 / 时间类问题的关键词
 DATE_KEYWORDS = ("月份", "每月", "哪个月", "日期", "时间", "最近", "今年", "去年")
@@ -45,12 +50,23 @@ def collect_db_context(question, articles, index):
 
     wants_stats = any(keyword in question for keyword in STAT_KEYWORDS)
     wants_date = any(keyword in question for keyword in DATE_KEYWORDS)
+    wants_tags = any(keyword in question for keyword in TAG_KEYWORDS)
 
-    lines = ["以下是数据库查询结果：", f"- 总文章数：{len(articles)}"]
+    # 无论什么问题，都先告诉模型完整的标签总数和标签列表
+    lines = [
+        "以下是数据库查询结果：",
+        f"- 总文章数：{len(articles)}",
+        f"- 标签总数：{len(categories)}",
+    ]
+    if categories:
+        lines.append("- 全部标签：" + "、".join(categories))
+    else:
+        lines.append("- 全部标签：无")
+
     details = []
 
-    # 统计 / 日期类问题：调用 Pandas 统计函数
-    if wants_stats or wants_date:
+    # 统计 / 日期 / 标签类问题：调用 Pandas 统计函数
+    if wants_stats or wants_date or wants_tags:
         df = db.load_dataframe()
         if not df.empty:
             counts = df["category"].value_counts()
@@ -70,12 +86,13 @@ def collect_db_context(question, articles, index):
                     )
                 )
 
-        # 统计类问题只附带最近几篇摘要，不附加全文
-        for article in articles[:3]:
-            lines.append(
-                f"- 最近文章：《{article['title']}》（{article['category']}，"
-                f"{article['created_at']}）：{_summary(article, 100)}"
-            )
+        # 统计 / 日期类问题附带最近几篇摘要；标签问题不需要附加文章
+        if wants_stats or wants_date:
+            for article in articles[:3]:
+                lines.append(
+                    f"- 最近文章：《{article['title']}》（{article['category']}，"
+                    f"{article['created_at']}）：{_summary(article, 100)}"
+                )
 
     # 指定标签问题：按分类过滤文章
     if matched:
@@ -95,7 +112,7 @@ def collect_db_context(question, articles, index):
             seen_ids.add(article["id"])
             unique.append(article)
         details = unique[:MAX_ARTICLES]
-    else:
+    elif not (wants_stats or wants_date or wants_tags):
         # 内容类问题：调用检索函数返回最相关的文章
         results = rag.search(question, articles, index, top_k=MAX_ARTICLES)
         if results:
@@ -104,8 +121,6 @@ def collect_db_context(question, articles, index):
                 + "、".join(article["title"] for _, article in results)
             )
             details = [article for _, article in results]
-        elif wants_stats or wants_date:
-            details = articles[:3]
 
     if details:
         lines.append("\n以下是相关文章内容：")
@@ -115,5 +130,6 @@ def collect_db_context(question, articles, index):
     return "\n".join(lines), {
         "matched_categories": matched,
         "stats": wants_stats or wants_date,
+        "tags": wants_tags,
         "articles": len(details),
     }

@@ -38,6 +38,8 @@ uv pip install -r requirements.txt --python .venv/Scripts/python.exe
 .venv/Scripts/streamlit run app.py
 ```
 
+**大模型配置（可选）**：复制 `.env.example` 为 `.env`，填写 API Key、接口地址和模型名；`rag.py` 启动时会自动加载项目根目录的 `.env`，命令行环境变量优先。`.env` 不纳入 git。
+
 启动后浏览器自动打开 `http://localhost:8501`。首次运行（数据库文件不存在时）会自动创建 `blog.db` 并建表，但**不会自动导入任何数据**；需要数据时使用「数据导入」页导入 `blog-data/articles.jsonl`，或在「写文章」页手动发布。
 
 ## 项目结构
@@ -64,6 +66,8 @@ yvchen-blog/
 │   └── 5_智能问答.py      # 检索博客文章并生成回答
 ├── .streamlit/
 │   └── config.toml       # 关闭文件监视、关闭匿名统计，提升页面响应速度
+├── .env.example          # 大模型配置模板
+├── .env                  # 本地配置（不提交）
 ├── requirements.txt
 ├── README.md
 ├── blog.db               # 首次运行时自动生成
@@ -77,23 +81,19 @@ yvchen-blog/
 
 - **DB 查询路由**（`db_tools.py`）：
   - 统计类问题：调用 `db.load_dataframe()` 统计总文章数、各标签数量、每月发文量
-  - 指定标签问题：调用 `db.get_available_categories()` 并按分类过滤文章
+  - 标签 / 分类问题：调用 `db.get_available_categories()`，把标签总数、全部标签和各标签文章数交给模型
+  - 指定标签问题：按分类过滤出该标签的文章
   - 内容类问题：调用 `rag.search()` 检索最相关的文章
-  - 查询结果和最多 6 篇相关文章会作为 AI 上下文
+  - 每次查询都会在上下文里带上标签总数和全部标签；相关文章最多 6 篇
 - **默认模式：本地检索**，不需要联网或 API Key，直接返回检索到的文章摘要。
-- **可选模式：大模型 + 流式输出**，设置以下环境变量后，调用 OpenAI 兼容接口；模型只接收 DB 查询结果和相关文章，不再一次性发送全部文章：
-  ```bash
-  # DeepSeek 示例
-  set OPENAI_API_KEY=你的Key
-  set OPENAI_BASE_URL=https://api.deepseek.com/v1
-  set OPENAI_MODEL=deepseek-chat
-
-  # 火山引擎 Ark 示例
-  set OPENAI_API_KEY=你的ArkKey
-  set OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
-  set OPENAI_MODEL=ark-code-latest
+- **可选模式：大模型 + 流式输出**，在项目根目录的 `.env` 中配置（推荐，复制 `.env.example`），或使用环境变量；模型只接收 DB 查询结果和相关文章，不再一次性发送全部文章：
+  ```env
+  # .env 示例（火山引擎 Ark）
+  OPENAI_API_KEY=你的ArkKey
+  OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
+  OPENAI_MODEL=ark-code-latest
   ```
-  PowerShell 写法为 `$env:OPENAI_API_KEY="你的Key"`，其他两个变量同理。
+  也可以继续用命令行的 `set OPENAI_API_KEY=...` 等方式；`.env` 会自动加载，命令行环境变量优先。
   代码不会发送 `temperature` 参数，以兼容只允许默认值的模型（如 Ark coding 模型）。
 - 页面为多轮对话框形式，回答逐段流式输出；只把最近 8 条对话历史传给模型，右上角「清空对话」可以重置会话。
 - 聊天记录保存在本地 `chat_history.json`，切换页面、刷新或重启服务后会自动恢复；点击「清空对话」会删除该文件。该文件不纳入 git。
@@ -160,4 +160,5 @@ yvchen-blog/
 - 页面全部使用 Streamlit 原生组件，没有自定义 HTML/CSS。
 - 首次运行只创建 `blog.db` 空表，不自动导入任何数据；需要数据时通过「数据导入」页导入文件，或在「写文章」页手动发布。
 - `.streamlit/config.toml` 关闭了文件监视，修改 Python 代码后需要重启服务才会生效。
-- `blog.db`、`blog.log`、`exports/` 都是运行时生成的文件，不纳入 git。
+- `.env` 用于本地大模型配置，不纳入 git；仓库只提交 `.env.example` 模板。
+- `blog.db`、`blog.log`、`chat_history.json`、`exports/` 都是运行时生成的文件，不纳入 git。

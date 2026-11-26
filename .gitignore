@@ -5,6 +5,7 @@ venv/
 blog.db
 blog.log
 chat_history.json
+.env
 exports/
 .DS_Store
 
